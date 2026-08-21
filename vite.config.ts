@@ -5,5 +5,5 @@ export default defineConfig(({mode})=>({
   base: mode==='production'?'./':'/',
   plugins:[react()],
   test:{environment:'jsdom'},
-  build:{chunkSizeWarningLimit:650,rollupOptions:{output:{manualChunks:{firebase:['firebase/app','firebase/auth','firebase/firestore'],react:['react','react-dom']}}}}
+  build:{chunkSizeWarningLimit:650,rollupOptions:{output:{manualChunks:{react:['react','react-dom']}}}}
 }));
