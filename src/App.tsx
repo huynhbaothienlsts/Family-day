@@ -28,7 +28,59 @@ function logout(){clearSession();setSession(null);nav('home')}
 return <div className={page==='live'?'liveMode':''}><header><button className="brand" onClick={()=>nav('home')}><img src={schoolLogo} alt="Lawrence S. Ting School"/><b>FAMILY DAY</b></button><nav className={menu?'open':''}>{(['home','live','schedule','families','leaderboard','rules','score']as Page[]).map(p=><button className={page===p?'active':''} onClick={()=>nav(p)} key={p}>{pages[p]}</button>)}</nav><div className="auth"><MusicToggle/>{session&&<button className="iconText" onClick={logout}><LogOut/> <span>Thoát nhập điểm</span></button>}<button className="hamb" onClick={()=>setMenu(!menu)}>{menu?<X/>:<Menu/>}</button></div></header>{!apiConfigured&&<div className="configBanner">Chưa cấu hình <code>VITE_APPS_SCRIPT_URL</code>. Xem README để kết nối Google Sheets.</div>}<div className={`connection ${connected?'online':'offline'}`}><span/>{connected?'LIVE':'KHÔNG THỂ KẾT NỐI'}{lastUpdated&&<small>Cập nhật {lastUpdated.toLocaleTimeString('vi-VN')}</small>}</div>{notice&&<div className="toast error">{notice}<button onClick={()=>setNotice('')}>×</button></div>}<main>{!dataReady?<Empty text="Đang kết nối…"/>:<Router page={page} nav={nav} matches={matches} session={session} setSession={setSession} refresh={refresh} notify={setNotice}/>}</main><footer><img src={schoolLogo} alt="LSTS"/><b>LSTS Family Day 2026</b><span>21.08.2026 · 13g30–15g30</span><span>FAIR PLAY · ĐOÀN KẾT · TÔN TRỌNG · HỢP TÁC</span></footer></div>}
 
 function Router({page,nav,matches,session,setSession,refresh,notify}:{page:Page;nav:(p:Page)=>void;matches:Match[];session:TeacherSession|null;setSession:(s:TeacherSession)=>void;refresh:(silent?:boolean)=>Promise<void>;notify:(s:string)=>void}){if(page==='schedule')return <Schedule matches={matches}/>;if(page==='families')return <Families matches={matches}/>;if(page==='leaderboard')return <Leaderboard matches={matches} full/>;if(page==='rules')return <Rules/>;if(page==='score')return session?<ScoreEntry matches={matches} session={session} refresh={refresh} notify={notify}/>:<TeacherLogin onLogin={setSession}/>;return <Dashboard matches={matches} nav={nav} liveOnly={page==='live'}/>}
-function MusicToggle(){const[playing,setPlaying]=useState(false);const context=useRef<AudioContext|null>(null),timer=useRef<number|null>(null);function beat(ctx:AudioContext){const now=ctx.currentTime;[0,0.3,0.6,0.9].forEach((offset,i)=>{const oscillator=ctx.createOscillator(),gain=ctx.createGain();oscillator.type=i%2?'triangle':'sine';oscillator.frequency.setValueAtTime(i%2?440:220,now+offset);gain.gain.setValueAtTime(.0001,now+offset);gain.gain.exponentialRampToValueAtTime(.045,now+offset+.015);gain.gain.exponentialRampToValueAtTime(.0001,now+offset+.16);oscillator.connect(gain).connect(ctx.destination);oscillator.start(now+offset);oscillator.stop(now+offset+.18)})}async function toggle(){if(playing){if(timer.current)clearInterval(timer.current);await context.current?.close();context.current=null;timer.current=null;setPlaying(false);return}const ctx=new AudioContext();context.current=ctx;await ctx.resume();beat(ctx);timer.current=window.setInterval(()=>beat(ctx),1200);setPlaying(true)}useEffect(()=>()=>{if(timer.current)clearInterval(timer.current);context.current?.close()},[]);return <button className={`musicToggle ${playing?'playing':''}`} onClick={toggle} aria-label={playing?'Tắt nhạc nền':'Bật nhạc nền'} title={playing?'Tắt nhạc nền':'Bật nhạc nền'}>{playing?<Volume2/>:<VolumeX/>}<span>{playing?'Tắt nhạc':'Bật nhạc'}</span></button>}
+function MusicToggle() {
+  const [playing, setPlaying] = useState(false);
+  const audio = useRef<HTMLAudioElement | null>(null);
+
+  async function toggle() {
+    if (!audio.current) {
+      audio.current = new Audio(
+        `${import.meta.env.BASE_URL}audio/family-day-theme.mp3`
+      );
+
+      audio.current.loop = true;
+      audio.current.volume = 0.35;
+
+      audio.current.addEventListener("ended", () => {
+        setPlaying(false);
+      });
+    }
+
+    if (playing) {
+      audio.current.pause();
+      setPlaying(false);
+      return;
+    }
+
+    try {
+      await audio.current.play();
+      setPlaying(true);
+    } catch {
+      setPlaying(false);
+      alert("Không thể phát nhạc. Vui lòng kiểm tra file âm thanh.");
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      audio.current?.pause();
+      audio.current = null;
+    };
+  }, []);
+
+  return (
+    <button
+      className={`musicToggle ${playing ? "playing" : ""}`}
+      onClick={toggle}
+      aria-label={playing ? "Tắt nhạc nền" : "Bật nhạc nền"}
+      title={playing ? "Tắt nhạc nền" : "Bật nhạc nền"}
+    >
+      {playing ? <Volume2 /> : <VolumeX />}
+      <span>{playing ? "Tắt nhạc" : "Bật nhạc"}</span>
+    </button>
+  );
+}
+
 function Hero(){return <section className="hero"><div className="eyebrow"><span className="pulse"/> TRỰC TIẾP · FAMILY DAY 2026</div><h1>SPORTS FRIENDLY<br/><em>COMPETITION</em></h1><p>Giao lưu thể thao · Trường Đinh Thiện Lý</p><div className="eventMeta"><span><CalendarDays/>21.08.2026</span><span><Clock3/>13g30–15g30</span></div><div className="heroHouses">{houses.map(h=><span key={h}><img src={houseLogos[h]} alt={`House ${h}`}/><b>{h}</b></span>)}</div></section>}
 function Dashboard({matches,nav,liveOnly=false}:{matches:Match[];nav:(p:Page)=>void;liveOnly?:boolean}){const completed=matches.filter(m=>m.status==='completed');const current=matches.filter(m=>statusNow(m)==='live');const upcoming=matches.filter(m=>statusNow(m)==='upcoming').slice(0,4);const full=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();return <>{!liveOnly&&<Hero/>}<section className="dashboard">{liveOnly&&<div className="displayHead"><div><small>TRỰC TIẾP · 21.08.2026</small><h1>LSTS FAMILY DAY <em>LIVE</em></h1></div><button onClick={full}><Expand/> Toàn màn hình</button></div>}<div className="sectionTitle"><div><small>CẬP NHẬT THEO THỜI GIAN THỰC</small><h2><Trophy/> Bảng xếp hạng House</h2></div>{!liveOnly&&<button className="textBtn" onClick={()=>nav('leaderboard')}>Xem chi tiết <ChevronRight/></button>}</div><Leaderboard matches={matches}/><div className="progress"><div><b>{completed.length} / {matches.length}</b><span>trận đã hoàn thành</span></div><div className="bar"><i style={{width:`${completed.length/matches.length*100}%`}}/></div><strong>{Math.round(completed.length/matches.length*100)}%</strong></div><div className="triple"><MatchSection title="Đang thi đấu" icon={<Activity/>} matches={current} empty="Chưa có trận đang diễn ra"/><MatchSection title="Trận tiếp theo" icon={<Clock3/>} matches={upcoming} empty="Không còn trận sắp tới"/><MatchSection title="Kết quả mới nhất" icon={<Check/>} matches={[...completed].sort((a,b)=>(b.version??0)-(a.version??0)).slice(0,4)} empty="Chưa có kết quả"/></div>{liveOnly&&<HouseTable matches={matches}/>}</section></>}
 function Leaderboard({matches,full=false}:{matches:Match[];full?:boolean}){const rows=rankedHouses(matches);return <section className={full?'page':'ranking'}>{full&&<PageHead kicker="LIVE RANKING" title="Bảng xếp hạng House" text="Tổng điểm được tính tự động từ điểm thực tế của 8 Family ở cả hai môn."/>}<div className="rankGrid">{rows.map(r=><article className="rankCard" key={r.house} style={{'--house':houseMeta[r.house].color,'--soft':houseMeta[r.house].soft}as any}><div className="place">{r.rank<=3?['🥇','🥈','🥉'][r.rank-1]:`#${r.rank}`}</div><img className="houseLogo" src={houseLogos[r.house]} alt={houseMeta[r.house].name}/><div><small>{r.tied?'ĐỒNG HẠNG':'XẾP HẠNG'}</small><h3>{houseMeta[r.house].name}</h3></div><strong>{r.total}<small> ĐIỂM</small></strong></article>)}</div>{full&&<HouseTable matches={matches}/>}</section>}
