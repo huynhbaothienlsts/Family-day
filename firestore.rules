@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function email() { return request.auth.token.email.lower(); }
+    function signedIn() { return request.auth != null && request.auth.token.email != null; }
+    function profile() { return get(/databases/$(database)/documents/users/$(email())).data; }
+    function authorized() { return signedIn() && exists(/databases/$(database)/documents/users/$(email())) && profile().active == true; }
+    function admin() { return authorized() && profile().role == 'admin'; }
+
+    match /matches/{matchId} {
+      allow read: if true;
+      allow create, delete: if admin();
+      allow update: if admin() || (authorized()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['scoreA','scoreB','status','updatedBy','updatedAt','version'])
+        && request.resource.data.scoreA is int && request.resource.data.scoreA >= 0
+        && request.resource.data.scoreB is int && request.resource.data.scoreB >= 0
+        && request.resource.data.status in ['upcoming','live','completed']
+        && request.resource.data.updatedBy == email()
+        && request.resource.data.version == resource.data.version + 1);
+    }
+    match /users/{userEmail} {
+      allow read: if signedIn() && (userEmail == email() || admin());
+      allow create, update, delete: if admin();
+    }
+    match /auditLogs/{logId} {
+      allow read: if admin();
+      allow create: if authorized()
+        && request.resource.data.teacher == email()
+        && request.resource.data.matchId is string
+        && request.resource.data.previousValue is map
+        && request.resource.data.newValue is map;
+      allow update, delete: if false;
+    }
+    match /{collectionName}/{docId} {
+      allow read: if collectionName in ['houses','families','sports','settings'];
+      allow write: if admin();
+    }
+  }
+}
