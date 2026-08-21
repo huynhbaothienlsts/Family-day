@@ -6,17 +6,30 @@ service cloud.firestore {
     function profile() { return get(/databases/$(database)/documents/users/$(email())).data; }
     function authorized() { return signedIn() && exists(/databases/$(database)/documents/users/$(email())) && profile().active == true; }
     function admin() { return authorized() && profile().role == 'admin'; }
+    function auditAfter(matchId) {
+      return getAfter(/databases/$(database)/documents/auditLogs/$(matchId + '-v' + string(request.resource.data.version))).data;
+    }
+    function validScoreOrReset() {
+      return ((request.resource.data.scoreA is int && request.resource.data.scoreA >= 0
+        && request.resource.data.scoreB is int && request.resource.data.scoreB >= 0)
+        || (admin() && request.resource.data.scoreA == null && request.resource.data.scoreB == null));
+    }
+    function hasMatchingAudit(matchId) {
+      return auditAfter(matchId).matchId == matchId
+        && auditAfter(matchId).version == request.resource.data.version
+        && auditAfter(matchId).teacher == email();
+    }
 
     match /matches/{matchId} {
       allow read: if true;
       allow create, delete: if admin();
-      allow update: if admin() || (authorized()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['scoreA','scoreB','status','updatedBy','updatedAt','version'])
-        && request.resource.data.scoreA is int && request.resource.data.scoreA >= 0
-        && request.resource.data.scoreB is int && request.resource.data.scoreB >= 0
+      allow update: if authorized()
+        && (admin() || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['scoreA','scoreB','status','updatedBy','updatedAt','version']))
+        && validScoreOrReset()
         && request.resource.data.status in ['upcoming','live','completed']
         && request.resource.data.updatedBy == email()
-        && request.resource.data.version == resource.data.version + 1);
+        && request.resource.data.version == resource.data.version + 1
+        && hasMatchingAudit(matchId);
     }
     match /users/{userEmail} {
       allow read: if signedIn() && (userEmail == email() || admin());
@@ -27,6 +40,8 @@ service cloud.firestore {
       allow create: if authorized()
         && request.resource.data.teacher == email()
         && request.resource.data.matchId is string
+        && request.resource.data.version is int
+        && logId == request.resource.data.matchId + '-v' + string(request.resource.data.version)
         && request.resource.data.previousValue is map
         && request.resource.data.newValue is map;
       allow update, delete: if false;
